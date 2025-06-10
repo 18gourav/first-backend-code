@@ -30,8 +30,8 @@ const userlogin = asyncHandler(async (req,res) => {
 
    
 // this segment is to check if the user has uploaded avatar and cover image or not
-   const avatarLocalPath = req.files?.avatar[0]?.path
-   const coverImageLocalPath = req.files?.coverImage[0]?.path 
+   const avatarLocalPath = req.files?.avatar[0]?.path;
+   const coverImageLocalPath = req.files?.coverImage[0]?.path;
 
    if(!avatarLocalPath){
       throw new apiError(400, 'avatar is required')
@@ -40,7 +40,7 @@ const userlogin = asyncHandler(async (req,res) => {
 
   // this segment is to check if the image is uploaded on cloudinary or not
    const avatar = await UploadFile(avatarLocalPath)
-   const coverimage = await UploadFile(coverImageLocalPath)
+   const coverImage = await UploadFile(coverImageLocalPath)
 
    if(!avatar) {
       throw new apiError(500, 'Failed to upload avatar image');
@@ -53,7 +53,7 @@ const userlogin = asyncHandler(async (req,res) => {
       username,
       fullName,
       avatar : avatar.url,
-      coverImage: coverimage?.url || '',
+      coverImage: coverImage?.url || '',
    })
 
    
