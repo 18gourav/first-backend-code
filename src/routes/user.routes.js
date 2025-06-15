@@ -1,10 +1,11 @@
 import {Router} from 'express';
-import { userlogin } from '../controllers/user.controller.js';
+import { userlogin, loginUser, logoutUser } from '../controllers/user.controller.js';
 import {upload} from '../middlewares/multer.middleware.js';
+import { verifyJWT } from '../middlewares/authorization.middleware.js';
 
 const router = Router();
 
-router.route("/login").post(
+router.route("/register").post(
     // multer middleware to handle file uploads
     // 'avatar' and 'coverImage' are the field names in the form
     upload.fields([
@@ -18,5 +19,10 @@ router.route("/login").post(
         }
     ]),
     userlogin)
+
+    router.route("/login").post(loginUser)
+
+    //secure route for logout
+    router.route("/logout").post(verifyJWT, logoutUser)
 
 export default router;
