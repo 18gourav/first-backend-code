@@ -18,7 +18,7 @@ export const verifyJWT = asyncHandler(async (req , res , next) => {
      const user = await User.findById(decodedToken._id).select('-password -refreshToken')
 
     if(!user) {
-        throw new apiError(401, 'You are not authorized to access this resource');
+        throw new apiError(401, 'You are not a valid user');
     }
 
     req.user = user;

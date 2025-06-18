@@ -4,6 +4,7 @@ import { User } from '../models/user.model.js'
 import {UploadFile} from '../utils/cloudinary.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 //this segment is used to generate the refresh and access token for the user
 const generateRefreshandAccessToken = async (userId) => {
@@ -115,7 +116,7 @@ const loginUser = asyncHandler(async (req,res) => {
 
    const { emailId, username , password} = req.body;
 
-   if(!emailId && !username) {
+   if(!emailId || !username) {
       throw new apiError(400, 'abe lodu naam or email toh de de')
    }
 
@@ -189,7 +190,7 @@ const logoutUser = asyncHandler(async (req,res) => {
    
 })
 
-const refreshAccessToken = asyncHandler(async (req, res) => {
+const refreshAccessToken = asyncHandler(async (req, res) => {  
    const incomingrefreshToken = req.cookies.refreshToken || req.body.refreshToken;
 
    if(!incomingrefreshToken) {
@@ -234,8 +235,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 })
 
 const passwordChange = asyncHandler(async (req,res) => {
-   //hamna yaha pa User.findbyidandupadte use nhi kiya kyuki hama yaha hooks bhi run karvana ha jaise pre
-   //vagera
+//hamna yaha pa User.findbyidandupadte use nhi kiya kyuki hama yaha hooks bhi run karvana ha jaise pre
+//vagera
    const { oldPassword, newPassword } = req.body;
 
    const user = await User.findById(req.user?._id)
@@ -290,5 +291,196 @@ const findAndUpdateDetails = asyncHandler(async (req,res) => {
 
 })
 
+const UpdateAvatar = asyncHandler(async (req,res) => {
+   const avatarLocalPath = req.file?.path
 
-export { userlogin, loginUser, logoutUser, refreshAccessToken,passwordChange, getUser };
+   if(!avatarLocalPath) {
+      throw new apiError(401, 'avatar is missing')
+   }
+
+   const updatedAvatar = await UploadFile(avatarLocalPath)
+
+   User.findByIdAndUpdate(req.user?._id,
+      {$set : 
+         {
+            avatar : updatedAvatar.url
+         }
+      },
+      {new:true}
+   )
+
+   return res
+   .status(200)
+   .json(
+      new apiResponse(200,
+         {updatedAvatar},
+         'avatar updated succesfully'
+      )
+   )
+   
+})
+
+const UpdateCoverImage = asyncHandler(async (req,res) => {
+   const coverImageLocalPath = req.file?.path
+
+   if(!coverImageLocalPath) {
+      throw new apiError(401, 'cover image is missing')
+   }
+
+   const updatedCoverImage = await UploadFile(coverImageLocalPath)
+
+   User.findByIdAndUpdate(req.user?._id,
+      {$set : 
+         {
+            avatar : updatedCoverImage.url
+         }
+      },
+      {new:true}
+   )
+
+   return res
+   .status(200)
+   .json(
+      new apiResponse(200,
+         {updatedCoverImage},
+         'cover image updated succesfully'
+      )
+   )
+   
+})
+
+//in this segement we are going to undersatnd about mongodb pipelines and we will write controllers of 
+// the user channel display where we display it like our youtube channel
+const getUserChannel = asyncHandler(async (req,res) => {
+   //req.params ka matlab ha ki jo url hit kara ha usma sa username nikalna
+   const {username} = req.params
+
+   if(!username) {
+      throw new apiError(400, ' Username does not fetched ')
+   }
+  
+   //aggregate meaning is to integrate pipeline
+   const channel = await User.aggregate([
+      //1st pipeline
+      // $match ka matlab ha ki ham kis basis pa match karna chahta ha jaisa ki isma ham log
+      //  username ka basis pa karna chahta ha
+      {
+         $match : {
+            username : username?.toLowerCase()
+         }
+      },
+      //2nd pipeline
+      //lookup ka matlab ki ab ham log dusre document se information leneg
+      {
+         $lookup : {
+               from: 'subscriptions', // from matlab kisko dekhna chahta ho
+               localField: '_id',// local field matlab kaha se dekhna chahta ho jaise hum user or user ma bhi kiss field se 
+               foreignField:'channel', // matlab jo subscriptions ha isma kya field dekhna chahta ho
+               as:'subscribers' // ab jab sab kuch dekhlia to usko kaise display karvana ha
+         }
+      },
+      {
+          $lookup : {
+               from: 'subscriptions',
+               localField: '_id',
+               foreignField:'subscriber',
+               as:'subscribedTo'
+         }
+      },
+      //3rd pipeline
+      {
+         $addFields : {              // add field matlab jo origin document ha usma field add karna jaise uaer ma
+            SubscribersCount : {
+                  $size : "$subscribers"  //size matlab jo hamna upar count document search kiye ha/ dekhe ha unko count karna
+            },
+            SubscribedToCount : {
+               $size: "$subscribedTo"
+            },
+            isSubscribed : {
+               $cond : {          // cond matlab condition 
+                  $in : [req.user?._id, "$subscribers.subscriber"],
+                  then : true,
+                  else: false
+               }
+            }
+         }
+      },
+      //4th pipeline
+      {
+         $project : {            // project matlab ki hama frontend pa kya kya display karvana ha un sabko 1 kardo
+            fullName : 1,
+            username : 1,
+            SubscribersCount:1,
+            SubscribedToCount:1,
+            isSubscribed:1,
+            coverImage:1,
+            avatar:1
+         }
+      }
+   ])
+
+   if (!channel?.length) {
+      throw new apiError(404, 'channel not exist')
+   }
+
+   return res
+   .status(200)
+   .json(
+      new apiResponse(400, channel[0], 'user channel fetched')
+   )
+})
+
+const getWatchHistory = asyncHandler(async (req,res) => {
+   const History = await User.aggregate([
+      {
+         $match:{
+            _id: new mongoose.Types>isObjectIdOrHexString(req.user?._id)
+         }
+      },
+      {
+         $lookup: {
+            from:'videos',
+            localField:'watchHistory',
+            foreignField:'_id',
+            as:'watchHistory',
+            pipeline: [
+               {
+                  $lookup: {
+                     from :'users',
+                     localField:'owner',
+                     foreignField:'_id',
+                     as:'owner',
+                     pipeline: [
+                        {
+                           $project:{
+                              fullName: 1,
+                              username: 1,
+                              avatar: 1
+                           }
+                        }
+                     ]
+                  }
+               },
+               {
+                  $addFields:{
+                     owner:{
+                        $first:"$owner"
+                     }
+                  }
+               }
+            ]
+         }
+      }
+   ])
+
+   return res
+   .status(200)
+   .json(new apiResponse(
+      400,
+      History[0].watchHistory,
+      'watch history fetched succesfully'
+   ))
+})
+
+export { userlogin, loginUser, logoutUser, refreshAccessToken,passwordChange, getUser ,
+    findAndUpdateDetails, UpdateAvatar, UpdateCoverImage, getUserChannel, getWatchHistory};
